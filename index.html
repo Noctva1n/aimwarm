@@ -47,7 +47,7 @@ button:hover{filter:brightness(1.08)}
 <p class="sub">Розминка перед грою на основі найпопулярніших вправ Aim Lab. Обери вправу або запусти повну розминку.</p>
 <div class="bar">
 <button class="pri" id="wu">▶ Розминка CS2 (5 вправ)</button>
-<label>Тривалість вправи:
+<label>Час вправи в розминці:
 <select id="dur"><option value="20">20 с</option><option value="30" selected>30 с</option><option value="60">60 с</option></select></label>
 <button id="th">🌓 Тема</button>
 </div>
@@ -63,7 +63,14 @@ button:hover{filter:brightness(1.08)}
 <label>🔊 Гучність <input id="vol" type="range" min="0" max="100" step="5" style="width:130px;vertical-align:middle"> <b id="vv"></b></label>
 <b id="cm" style="color:var(--ac)"></b></div>
 <div style="margin-top:8px">Це справжня 3D-сцена (кімната, перспектива, камера обертається, приціл по центру). Рух миші перераховується в кут повороту так само, як у CS2: counts × 0,022° × sens, з проєкцією під обраний формат. Масштаб поля підібрано під фізичний розмір твого монітора (px/° як у грі), тож вікно показує лише частину огляду — для повного огляду, як у CS2, вмикай «На весь екран». Розширення застосовується у повноекранному режимі: з чорними смугами, якщо формат не збігається з монітором, або з розтягуванням (галочка). Горизонтальний FOV рахується з розширення так само, як у CS2 (4:3 — 90°, 16:9 — 106°). Прискорення немає (raw input). DPI потрібен для розрахунку см/360° — це число має збігатися з грою.</div></div>
-<div class="grid" id="cards"></div>
+<div class="bar" id="tabs"><button data-t="f">Фліки</button><button data-t="p">Точність</button><button data-t="t">Трекінг</button><button data-t="r">Реакція</button><button data-t="w">Розминка</button></div>
+<div class="box" id="setup" style="display:none;margin:0 0 14px"></div>
+<div class="grid" id="cards"></div><div class="grid" id="cards2"></div>
+<div class="box" style="margin-top:22px"><b>🎯 Приціл</b>
+<div class="bar" style="margin:10px 0 6px;align-items:flex-start"><canvas id="xp" width="110" height="110" style="background:#0b0f14;border-radius:10px"></canvas><div id="xc" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;flex:1"></div></div>
+
+<div class="bar" style="margin:6px 0 0"><button id="xr">Скинути</button><span id="xm"></span></div>
+<div style="margin-top:6px">Налаштування прицілу зберігаються автоматично. Розміри в пікселях під висоту екрана, яку ти вкажеш.</div></div>
 <div class="box"><b>Як користуватись.</b> Введи DPI та sens зі своєї CS2, клікай по цілях лівою кнопкою миші. У вправах на трекінг утримуй ліву кнопку на цілі. <b>Esc</b> — пауза (продовжити, почати спочатку або вийти), кнопка «Вийти» — одразу в меню.
 Фліки в сантиметрах по килимку мають відчуватись так само, як у CS2.
 <br><b>Рекомендована розминка:</b> Gridshot → Spidershot → Microshot → Strafetrack → Headline (≈3 хв). Тримай точність понад 85% — швидкість прийде сама.</div>
@@ -82,7 +89,7 @@ const S={phase:"menu",T:[],fx:[],mx:0,my:0,down:false,hits:0,shots:0,miss:0,scor
 let cur=null,curId="",dur=30,routine=null,ri=0,res=[],last=0;
 const now=()=>performance.now(),U=()=>Math.min(W,H);
 function fit(){const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;ctx.setTransform(d,0,0,d,0,0);CW=r.width;CH=r.height;const g=geo();W=VW=g.vw;VH=g.vh;YS=g.ys;H=W/cfg.asp}
-function add(o){S.T.push(Object.assign({b:now()},o))}
+function add(o){const e=S.ex||{};o.r*=e.rnd?R(Math.min(e.mn,e.mx)||.6,Math.max(e.mn,e.mx)||1.6):(e.sz||1);S.T.push(Object.assign({b:now()},o))}
 function place(xa,xb,ya,yb,r,avoid,minD){for(let i=0;i<60;i++){const x=R(xa,xb)*W,y=R(ya,yb)*H;if(!avoid||avoid.every(p=>Math.hypot(p.x-x,p.y-y)>(minD||r*2.4)))return{x,y}}return{x:R(xa,xb)*W,y:R(ya,yb)*H}}
 const M={
 gridshot:{n:"Gridshot",pop:1,k:"Флік · швидкість",d:"3 цілі на сітці 3×3. Найпопулярніша вправа Aim Lab і класичний старт розминки.",
@@ -117,37 +124,75 @@ smooth:{n:"Smoothtrack",k:"Трекінг · плавний",d:"Ціль пла�
   if(o.x<o.r||o.x>W-o.r){o.a=Math.PI-o.a;o.x=Math.max(o.r,Math.min(W-o.r,o.x))}
   if(o.y<o.r||o.y>H-o.r){o.a=-o.a;o.y=Math.max(o.r,Math.min(H-o.r,o.y))}}}
 };
+const WP={ak:{n:'AK-47',d:36,r:.1,auto:1},de:{n:'Desert Eagle',d:63,r:.225},awp:{n:'AWP',d:115,r:1.45}};
+// [назва, A(x,y,z), B(x,y,z), радіус, множник шкоди, колір] — одиниці CS, y від підлоги
+const PARTS=[['head',0,64,0,0,67,0,4.5,4,'#e8b690'],['neck',0,60,0,0,63,0,2.6,1,'#d9a37e'],['chest',0,50,0,0,59,0,6.8,1,'#4a6a3a'],['stomach',0,42,0,0,49,0,6,1.25,'#56703f'],['pelvis',0,33,0,0,40,0,6.4,1.25,'#3b3f55'],['armL',-9.5,58,0,-10.5,41,2,3.2,1,'#4a6a3a'],['armR',9.5,58,0,10.5,41,2,3.2,1,'#4a6a3a'],['thighL',-3.8,32,0,-4,17,0,4.8,.75,'#3b3f55'],['thighR',3.8,32,0,4,17,0,4.8,.75,'#3b3f55'],['shinL',-4,16,0,-4,3,0,3.6,.75,'#2a2d3d'],['shinR',4,16,0,4,3,0,3.6,.75,'#2a2d3d']];
+function mkRoom(X,Y0,Y1,Z0,Z1,s,ys){const L=[],r=(a,b,t)=>{const o=[];for(let v=a;v<=b+.1;v+=t)o.push(v);return o},xs=r(-X,X,s),zs=r(Z0,Z1,s),P=(a,b,w)=>L.push([a,b,w]);
+[Z0,Z1].forEach(z=>{ys.forEach(y=>P([-X,y,z],[X,y,z],z==Z1));xs.forEach(x=>P([x,Y0,z],[x,Y1,z],z==Z1))});
+[-X,X].forEach(x=>{ys.forEach(y=>P([x,y,Z0],[x,y,Z1]));zs.forEach(z=>P([x,Y0,z],[x,Y1,z]))});
+[Y0,Y1].forEach(y=>{zs.forEach(z=>P([-X,y,z],[X,y,z]));xs.forEach(x=>P([x,y,Z0],[x,y,Z1]))});return L}
+const ROOM2=mkRoom(700,-64,256,-300,1500,100,[-64,16,96,176,256]);
+const mi=()=>{S.bots=[];S.kills=S.hsn=0;S.nf=0},rb=(a,b)=>({x:R(-500,500),z:R(a,b),vx:0,vz:0,hp:100,on:1,born:now(),tc:0}),rep=(b,f)=>{S.bots[S.bots.indexOf(b)]=f()};
+function rayCap(d,b,p){const A=[b.x+p[1],p[2]-64,b.z+p[3]],V=[p[4]-p[1],p[5]-p[2],p[6]-p[3]],w=[-A[0],-A[1],-A[2]],bb=dot(d,V),c=dot(V,V),dd=dot(d,w),e=dot(V,w),D=c-bb*bb;
+ let tc=D>1e-9?(e-bb*dd)/D:0;tc=Math.max(0,Math.min(1,tc));const sc=bb*tc-dd;if(sc<=0)return null;
+ const q=[0,1,2].map(i=>w[i]+sc*d[i]-tc*V[i]);return dot(q,q)<=p[7]*p[7]?sc:null}
+function fire(){const w=WP[cfg.wp]||WP.ak,t=now();if(t<S.nf)return;S.nf=t+w.r*1000;S.shots++;snd('shot');
+ const B=basis(),f=focal(),v=[0,1,2].map(i=>B.F[i]*f+B.R[i]*S.ox-B.U[i]*S.oy/YS),l=Math.hypot(v[0],v[1],v[2]),d=v.map(x=>x/l);let best=null;
+ S.bots.forEach(b=>{if(b.on)PARTS.forEach(p=>{const s=rayCap(d,b,p);if(s!==null&&(!best||s<best.s))best={s,b,p}})});
+ const X=CW/2+S.ox,Y=CH/2+S.oy;
+ if(!best){S.fx.push({x:X,y:Y,a:1,h:0});S.score=Math.max(0,S.score-5);return}
+ const hd=best.p[0]==='head',dm=Math.round(w.d*best.p[8]);S.hits++;best.b.hp-=dm;snd(hd?'head':'hit');S.fx.push({x:X,y:Y,a:1,h:1,t:'-'+dm});
+ if(best.b.hp<=0){S.kills++;if(hd)S.hsn++;S.score+=100+(hd?50:0);S.rt.push(now()-best.b.born);cur.kill(best.b)}}
+function drawBots(B,f,fy,cx,cy,N){S.bots.forEach(b=>{if(!b.on)return;const fl=cam([b.x,-64,b.z],B);if(fl[2]<N)return;
+ ctx.fillStyle='rgba(0,0,0,.4)';ctx.beginPath();ctx.ellipse(cx+f*fl[0]/fl[2],cy-fy*fl[1]/fl[2],17*f/fl[2],5*f/fl[2],0,0,7);ctx.fill();
+ const ps=PARTS.map(p=>{const a=cam([b.x+p[1],p[2]-64,b.z+p[3]],B),e=cam([b.x+p[4],p[5]-64,b.z+p[6]],B);return{p,a,e,z:(a[2]+e[2])/2}}).filter(o=>o.a[2]>N&&o.e[2]>N).sort((x,y)=>y.z-x.z);
+ ctx.lineCap='round';
+ ps.forEach(o=>{const w=2*o.p[7]*f/o.z,x1=cx+f*o.a[0]/o.a[2],y1=cy-fy*o.a[1]/o.a[2],x2=cx+f*o.e[0]/o.e[2],y2=cy-fy*o.e[1]/o.e[2];
+  ctx.strokeStyle='rgba(0,0,0,.55)';ctx.lineWidth=w+2;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  ctx.strokeStyle=o.p[9];ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke()});
+ ctx.lineCap='butt';const h=cam([b.x,14,b.z],B);if(h[2]>N){const x=cx+f*h[0]/h[2],y=cy-fy*h[1]/h[2],w=34*f/h[2];ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-w/2,y-4,w,5);ctx.fillStyle='#4dff6a';ctx.fillRect(x-w/2,y-4,w*Math.max(0,b.hp)/100,5)}})}
+const nS=()=>rb(500,1300),nD=()=>rb(600,1200),nR=()=>Object.assign(rb(1300,1450),{vz:-250});
+void ({
+ m_static:{n:'Static',map:1,k:'Вармапа · статичні боти',d:'5 ботів стоять на підлозі. Хедшот ×4, ноги ×0,75. Зброю обирай вище.',init(){mi();for(let i=0;i<5;i++)S.bots.push(nS())},kill(b){rep(b,nS)}},
+ m_dyn:{n:'Dynamic',map:1,k:'Вармапа · боти стрейфляться',d:'3 боти бігають убік і різко зупиняються (контрстрейф).',init(){mi();for(let i=0;i<3;i++)S.bots.push(nD())},
+  upd(dt){S.bots.forEach(b=>{b.tc-=dt;if(b.tc<0){b.vx=Math.random()<.25?0:(Math.random()<.5?-1:1)*R(150,250);b.tc=R(.2,.8)}b.x+=b.vx*dt;if(Math.abs(b.x)>550){b.x=Math.sign(b.x)*550;b.vx=-b.vx}})},kill(b){rep(b,nD)}},
+ m_rush:{n:'Rush',map:1,k:'Вармапа · боти біжать на тебе',d:'Боти біжать до тебе зі швидкістю 250. Вбий, поки не добіг (добіг = промах).',init(){mi();for(let i=0;i<2;i++){const b=nR();b.z=R(900,1450);S.bots.push(b)}},
+  upd(dt){S.bots.forEach(b=>{b.z+=b.vz*dt;b.x+=Math.sin(now()/500+b.born)*60*dt;if(b.z<80){S.miss++;rep(b,nR)}})},kill(b){rep(b,nR)}},
+ m_react:{n:'Reaction',map:1,k:'Вармапа · реакція',d:'Бот з’являється на ~0,9 с у випадковому місці й зникає. Вбий, поки не сховався.',init(){mi();S.bots.push(Object.assign(rb(500,1100),{on:0,tc:R(.4,1)}))},
+  upd(dt){const b=S.bots[0];b.tc-=dt;if(b.tc<0){if(b.on){S.miss++;b.on=0;b.tc=R(.5,1.1)}else Object.assign(b,rb(500,1100),{on:1,tc:.9})}},kill(b){Object.assign(b,{on:0,hp:100,tc:R(.5,1.1)})}}
+});
 const WU=["gridshot","spidershot","microshot","strafe","headline"];
 const bests=(()=>{try{return JSON.parse(localStorage.getItem("aimbest")||"{}")}catch(e){return{}}})();
 function saveBest(){try{localStorage.setItem("aimbest",JSON.stringify(bests))}catch(e){}}
-function cards(){$("#cards").innerHTML=Object.entries(M).map(([id,m])=>`<div class="card" data-id="${id}"><h3>${m.n}${m.pop?'<span class="pop">топ Aim Lab</span>':''}</h3><div class="tag">${m.k}</div><p>${m.d}</p><div class="best">Рекорд (${dur} с): ${bests[id+dur]??"—"}</div></div>`).join("");
- document.querySelectorAll(".card").forEach(c=>c.onclick=()=>{routine=null;start(c.dataset.id)})}
-function view(g){$("#menu").classList.toggle("hidden",g);$("#game").classList.toggle("hidden",!g);if(!g){trkStop();S.phase="menu";try{document.exitPointerLock()}catch(e){}if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});$("#ov").style.display="none";cards()}}
-function start(id){curId=id;cur=M[id];view(true);fit();S.ax=S.ay=S.ox=S.oy=0;sync();au();fsReq();lockReq();$("#hn").textContent=cur.n;$("#ov").style.display="none";
- Object.assign(S,{cdn:0,tried:0,hadLock:0,phase:"cd",cd:3,T:[],fx:[],hits:0,shots:0,miss:0,score:0,on:0,rt:[],l:null,left:dur});
- $("#ht").textContent=dur+" с";$("#hs").textContent="0";$("#ha").textContent="—";last=now();kick()}
+const cdh=l=>l.map(([id,m])=>`<div class="card" data-id="${id}"><h3>${m.n}</h3><div class="tag">${m.k}</div><p>${m.d}</p><div class="best">Рекорд (${dur} с): ${bests[id+dur]??"—"}</div></div>`).join("");
+function cards(){const E=Object.entries(M).filter(e=>!e[1].map&&TYPE[e[0]]===tab);document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("pri",b.dataset.t===tab));$("#cards2").innerHTML=tab==="w"?wcards():"";$("#cards").innerHTML=E.map(([id,m])=>`<div class="card" data-id="${id}"><h3>${m.n}${m.pop?'<span class="pop">топ Aim Lab</span>':''}</h3><div class="tag">${m.k}</div><p>${m.d}</p><div class="best">Рекорд (${exc(id).t} с): ${bests[id+exc(id).t]??"—"}</div></div>`).join("");
+ document.querySelectorAll(".card").forEach(c=>c.onclick=()=>{if(c.dataset.w){routine=WUS[+c.dataset.w];ri=0;res=[];start(routine[0])}else openSetup(c.dataset.id)})}
+function view(g){$("#menu").classList.toggle("hidden",g);$("#game").classList.toggle("hidden",!g);if(!g){trkStop();dur=+$("#dur").value;S.phase="menu";try{document.exitPointerLock()}catch(e){}if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});$("#ov").style.display="none";cards()}}
+function start(id){curId=id;cur=M[id];const ex=routine?{sz:1,sp:1}:exc(id);dur=routine?+$("#dur").value:(ex.nt?36000:Math.max(5,ex.t||30));S.nt=!routine&&!!ex.nt;S.ex=ex;view(true);fit();S.ax=S.ay=S.ox=S.oy=0;sync();au();fsReq();lockReq();$("#hn").textContent=cur.n;$("#ov").style.display="none";
+ Object.assign(S,{bots:[],kills:0,hsn:0,nf:0,cdn:0,tried:0,hadLock:0,phase:"cd",cd:3,T:[],fx:[],hits:0,shots:0,miss:0,score:0,on:0,rt:[],l:null,left:dur});
+ $("#ht").textContent=S.nt?"∞":dur+" с";$("#hs").textContent="0";$("#ha").textContent="—";last=now();kick()}
 function begin(){S.phase="play";S.T=[];cur.init();snd("go");trkStart()}
 function loop(t){alive=0;if(S.phase==="menu"||S.phase==="end")return;const dt=Math.min(.05,(t-last)/1000);last=t;
  if(S.phase==="pause"){draw();kick();return}
  if(S.phase==="cd"){S.cd-=dt;const n=Math.ceil(S.cd);if(n!==S.cdn&&n>0){S.cdn=n;snd("beep")}if(S.cd<=0)begin()}
- else{S.left-=dt;if(cur.upd)cur.upd(dt);
-  const onT=cur.track&&S.down&&S.T[0]&&hit3(S.T[0]);if(onT)S.on+=dt;trkSet(onT);
+ else{S.left-=dt;if(cur.upd)cur.upd(cur.track?dt*(S.ex.sp||1):dt);
+  if(cur.map&&S.down&&(WP[cfg.wp]||WP.ak).auto)fire();const onT=cur.track&&S.down&&S.T[0]&&hit3(S.T[0]);if(onT)S.on+=dt;trkSet(onT);
   S.fx=S.fx.filter(f=>(f.a-=dt*3)>0);
   const el=dur-S.left;S.score=cur.track?Math.round(S.on*100):Math.max(0,S.score);
-  $("#ht").textContent=Math.max(0,Math.ceil(S.left))+" с";$("#hs").textContent="Рахунок: "+S.score;
+  $("#ht").textContent=S.nt?Math.floor(dur-S.left)+" с ∞":Math.max(0,Math.ceil(S.left))+" с";$("#hs").textContent="Рахунок: "+S.score;
   $("#ha").textContent="Точність: "+(cur.track?(el>0?Math.round(S.on/el*100):0):(S.shots?Math.round(S.hits/S.shots*100):"—"))+(S.shots||cur.track?"%":"");
   if(S.left<=0){finish();return}}
  draw();kick()}
 function draw(){ctx.fillStyle="#000";ctx.fillRect(0,0,CW,CH);const B=basis(),f=focal(),fy=f*YS,cx=CW/2,cy=CH/2,N=5,tn=now(),bw=Math.min(VW,CW),bh=Math.min(VH,CH);ctx.save();ctx.beginPath();ctx.rect(cx-bw/2,cy-bh/2,bw,bh);ctx.clip();ctx.fillStyle="#0b0f14";ctx.fillRect(0,0,CW,CH);ctx.lineWidth=1;
- for(const[a,b,w] of ROOM){let p=cam(a,B),q=cam(b,B);if(p[2]<N&&q[2]<N)continue;
+ for(const[a,b,w] of (cur.map?ROOM2:ROOM)){let p=cam(a,B),q=cam(b,B);if(p[2]<N&&q[2]<N)continue;
   if(p[2]<N){const t=(N-p[2])/(q[2]-p[2]);p=p.map((v,i)=>v+(q[i]-v)*t)}else if(q[2]<N){const t=(N-q[2])/(p[2]-q[2]);q=q.map((v,i)=>v+(p[i]-v)*t)}
   ctx.strokeStyle=w?"rgba(140,170,220,.4)":"rgba(120,150,190,.16)";ctx.beginPath();ctx.moveTo(cx+f*p[0]/p[2],cy-fy*p[1]/p[2]);ctx.lineTo(cx+f*q[0]/q[2],cy-fy*q[1]/q[2]);ctx.stroke()}
  S.T.forEach(o=>{const w=wpos(o),c=cam(w.c,B);if(c[2]<N)return;const sx=cx+f*c[0]/c[2],sy=cy-fy*c[1]/c[2],rr=w.r*(o.life?1-.45*(tn-o.b)/o.life:1),rs=f*rr/c[2],on=cur.track&&S.down&&hit3(o);
   const g=ctx.createRadialGradient(sx-rs*.3,sy-rs*.3,rs*.1,sx,sy,rs);g.addColorStop(0,on?"#fff3a0":"#9ff0ff");g.addColorStop(1,on?"#f0a500":"#1aa7d6");
   ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(sx,sy,rs,rs*YS,0,0,7);ctx.fill();ctx.strokeStyle="rgba(255,255,255,.7)";ctx.lineWidth=2;ctx.stroke();ctx.lineWidth=1});
- S.fx.forEach(q=>{ctx.strokeStyle=q.h?`rgba(90,255,120,${q.a})`:`rgba(255,90,90,${q.a})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(q.x,q.y,(1-q.a)*22+4,0,7);ctx.stroke()});
+ if(cur.map)drawBots(B,f,fy,cx,cy,N);S.fx.forEach(q=>{ctx.strokeStyle=q.h?`rgba(90,255,120,${q.a})`:`rgba(255,90,90,${q.a})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(q.x,q.y,(1-q.a)*22+4,0,7);ctx.stroke();if(q.t){ctx.fillStyle="#fff";ctx.font="700 15px system-ui";ctx.textAlign="left";ctx.fillText(q.t,q.x+16,q.y-8-(1-q.a)*30)}});
  ctx.restore();if(S.phase==="cd"){ctx.fillStyle="#e8ecf1";ctx.font="700 "+CH*.2+"px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(Math.ceil(S.cd),cx,cy)}
- const x=cx+S.ox,y=cy+S.oy;ctx.strokeStyle="#4dff6a";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-12,y);ctx.lineTo(x-4,y);ctx.moveTo(x+4,y);ctx.lineTo(x+12,y);ctx.moveTo(x,y-12);ctx.lineTo(x,y-4);ctx.moveTo(x,y+4);ctx.lineTo(x,y+12);ctx.stroke()}
+ drawCH(ctx,cx+S.ox,cy+S.oy,VH/(cfg.xh.rh||1080))}
 function draw2d(){ctx.clearRect(0,0,CW,CH);const lk=locked(),cx=lk?S.mx:W/2,cy=lk?S.my:H/2;ctx.save();ctx.translate(CW/2-cx,CH/2-cy);ctx.strokeStyle="rgba(120,150,190,.35)";ctx.lineWidth=2;ctx.strokeRect(0,0,W,H);ctx.strokeStyle="rgba(120,150,190,.1)";ctx.lineWidth=1;
  for(let x=0;x<W;x+=W/16){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
  for(let y=0;y<H;y+=H/9){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
@@ -159,7 +204,7 @@ function draw2d(){ctx.clearRect(0,0,CW,CH);const lk=locked(),cx=lk?S.mx:W/2,cy=l
  ctx.restore();if(S.phase==="cd"){ctx.fillStyle="#e8ecf1";ctx.font="700 "+CH*.2+"px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(Math.ceil(S.cd),CW/2,CH/2)}
  const x=S.mx-cx+CW/2,y=S.my-cy+CH/2;ctx.strokeStyle="#4dff6a";ctx.lineWidth=2;ctx.beginPath();
  ctx.moveTo(x-12,y);ctx.lineTo(x-4,y);ctx.moveTo(x+4,y);ctx.lineTo(x+12,y);ctx.moveTo(x,y-12);ctx.lineTo(x,y-4);ctx.moveTo(x,y+4);ctx.lineTo(x,y+12);ctx.stroke()}
-const cfg=(()=>{const d={dpi:800,sens:1,asp:1.7778,res:"1920x1080",cw:1080,ch:1080,st:0,lock:1,fs:1,vol:.6};try{return Object.assign(d,JSON.parse(localStorage.getItem("aimcfg")||"{}"))}catch(e){return d}})();
+const cfg=(()=>{const d={dpi:800,sens:1,asp:1.7778,res:"1920x1080",cw:1080,ch:1080,st:0,lock:1,fs:1,vol:.6,wp:"ak"};try{return Object.assign(d,JSON.parse(localStorage.getItem("aimcfg")||"{}"))}catch(e){return d}})();
 if(!cfg.sel)cfg.sel=cfg.res;if(cfg.sel==="custom")cfg.res=cfg.cw+"x"+cfg.ch;
 {const q=cfg.res.split("x");cfg.asp=q[0]/q[1]}
 function saveCfg(){try{localStorage.setItem("aimcfg",JSON.stringify(cfg))}catch(e){}}
@@ -172,7 +217,7 @@ function geo(){const[rw,rh]=cfg.res.split("x").map(Number),nW=screen.width,nH=sc
 let AC=null,TK=null;
 function au(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==="suspended")AC.resume();return AC}
 function tone(f,d,ty,vol,f2,dl){const c=au();if(!c||!cfg.vol)return;const t=c.currentTime+(dl||0),g=c.createGain(),o=c.createOscillator(),v=cfg.vol*cfg.vol*vol;o.type=ty;o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+d+.02)}
-function snd(k){if(k==="hit"){tone(1500,.09,"sine",.5,900);tone(3000,.03,"square",.08)}else if(k==="miss")tone(170,.08,"triangle",.35,90);else if(k==="beep")tone(660,.12,"sine",.4);else if(k==="go")tone(990,.25,"sine",.5);else if(k==="end"){tone(660,.18,"sine",.4);tone(440,.3,"sine",.4,0,.18)}else if(k==="rec"){[523,659,784,1047].forEach((f,i)=>tone(f,.2,"sine",.4,0,i*.1))}}
+function snd(k){if(k==="hit"){tone(1500,.09,"sine",.5,900);tone(3000,.03,"square",.08)}else if(k==="miss")tone(170,.08,"triangle",.35,90);else if(k==="shot")tone(110,.06,"sawtooth",.18,60);else if(k==="head")tone(2200,.12,"sine",.5,1800);else if(k==="beep")tone(660,.12,"sine",.4);else if(k==="go")tone(990,.25,"sine",.5);else if(k==="end"){tone(660,.18,"sine",.4);tone(440,.3,"sine",.4,0,.18)}else if(k==="rec"){[523,659,784,1047].forEach((f,i)=>tone(f,.2,"sine",.4,0,i*.1))}}
 function trkStop(){if(TK){try{TK.o.stop()}catch(e){}TK=null}}
 function trkStart(){trkStop();if(!cur.track)return;const c=au();if(!c)return;const o=c.createOscillator(),g=c.createGain();o.type="sine";o.frequency.value=480;g.gain.value=0;o.connect(g);g.connect(c.destination);o.start();TK={o,g}}
 function trkSet(on){if(TK&&AC)TK.g.gain.setTargetAtTime(on&&cfg.vol?cfg.vol*cfg.vol*.12:0,AC.currentTime,.03)}
@@ -193,24 +238,24 @@ function pos_old(e){if(locked()){const k=.022*cfg.sens*Math.PI/180,f=focal(),mx=
  S.ax=Math.max(-mx,Math.min(mx,S.ax+(e.movementX||0)*k));S.ay=Math.max(-my,Math.min(my,S.ay+(e.movementY||0)*k));sync()}
  else{const r=cv.getBoundingClientRect();S.mx=W/2+e.clientX-r.left-CW/2;S.my=H/2+e.clientY-r.top-CH/2}}
 function pause(){trkSet(false);S.prev=S.phase;S.phase="pause";try{document.exitPointerLock()}catch(e){}
- $("#ovp").innerHTML=`<h2 style="margin:0 0 6px">Пауза</h2><div style="opacity:.8">Тренування не завершено</div><div class="row"><button class="pri" id="rs">▶ Продовжити</button><button id="rst">↻ Спочатку</button><button id="qt">✕ Вийти${routine?" з розминки":""}</button></div><div style="margin-top:12px">🔊 <input id="pv" type="range" min="0" max="100" step="5" style="width:150px;vertical-align:middle"></div>`;$("#ov").style.display="flex";
- $("#pv").value=Math.round(cfg.vol*100);$("#pv").oninput=e=>{cfg.vol=e.target.value/100;saveCfg();snd("hit")};$("#rs").onclick=()=>{$("#ov").style.display="none";S.phase=S.prev;S.tried=0;last=now();fsReq();lockReq()};
+ $("#ovp").innerHTML=`<h2 style="margin:0 0 6px">Пауза</h2><div style="opacity:.8">Тренування не завершено</div><div class="row"><button class="pri" id="rs">▶ Продовжити</button><button id="rst">↻ Спочатку</button><button id="fin">■ Завершити</button><button id="qt">✕ Вийти${routine?" з розминки":""}</button></div><div style="margin-top:12px">🔊 <input id="pv" type="range" min="0" max="100" step="5" style="width:150px;vertical-align:middle"></div>`;$("#ov").style.display="flex";
+ $("#fin").onclick=finish;$("#pv").value=Math.round(cfg.vol*100);$("#pv").oninput=e=>{cfg.vol=e.target.value/100;saveCfg();snd("hit")};$("#rs").onclick=()=>{$("#ov").style.display="none";S.phase=S.prev;S.tried=0;last=now();fsReq();lockReq()};
  $("#rst").onclick=()=>start(curId);$("#qt").onclick=()=>{routine=null;view(false)}}
 let alive=0;const kick=()=>{if(!alive){alive=1;requestAnimationFrame(loop)}};
 document.addEventListener("pointerlockchange",()=>{if(locked())S.hadLock=1;else if(S.hadLock&&(S.phase==="cd"||S.phase==="play"))pause()});
 document.addEventListener("mousemove",e=>{if(S.phase==="cd"||S.phase==="play"||S.phase==="pause")pos(e)});
 cv.addEventListener("pointerup",()=>S.down=false);
 cv.addEventListener("pointerleave",()=>S.down=false);
-cv.addEventListener("mousedown",e=>{if(e.button!==0)return;if(cfg.lock&&!locked()&&!S.tried&&(S.phase==="cd"||S.phase==="play")){S.tried=1;lockReq()}if(!locked())pos(e);S.down=true;if(S.phase!=="play"||cur.track)return;
+cv.addEventListener("mousedown",e=>{if(e.button!==0)return;if(cfg.lock&&!locked()&&!S.tried&&(S.phase==="cd"||S.phase==="play")){S.tried=1;lockReq()}if(!locked())pos(e);S.down=true;if(S.phase!=="play"||cur.track)return;if(cur.map){fire();return}
  const i=[...S.T].reverse().findIndex(hit3);S.shots++;
  if(i<0){S.fx.push({x:CW/2+S.ox,y:CH/2+S.oy,a:1,h:0});snd("miss");S.score=Math.max(0,S.score-20);return}
  const idx=S.T.length-1-i,o=S.T[idx];S.T.splice(idx,1);S.hits++;S.rt.push(now()-o.b);S.score+=100;S.fx.push({x:CW/2+S.ox,y:CH/2+S.oy,a:1,h:1});snd("hit");cur.hit(o)});
-function finish(){S.phase="end";try{document.exitPointerLock()}catch(e){}const el=dur,acc=cur.track?Math.round(S.on/el*100):(S.shots?Math.round(S.hits/S.shots*100):0),sc=S.score,
- rt=S.rt.length?Math.round(S.rt.reduce((a,b)=>a+b,0)/S.rt.length):null,k=curId+dur,nb=sc>(bests[k]||0);
+function finish(){S.phase="end";try{document.exitPointerLock()}catch(e){}const el=S.nt?Math.max(1,dur-S.left):dur,acc=cur.track?Math.round(S.on/el*100):(S.shots?Math.round(S.hits/S.shots*100):0),sc=S.score,
+ rt=S.rt.length?Math.round(S.rt.reduce((a,b)=>a+b,0)/S.rt.length):null,k=curId+dur,nb=!S.nt&&sc>(bests[k]||0);
  if(nb){bests[k]=sc;saveBest()}snd(nb?"rec":"end");trkStop();
  res.push({n:cur.n,sc,acc});
- let h=`<h2 style="margin:0 0 6px">${cur.n}</h2><div style="font-size:34px;font-weight:700">${sc}</div>${nb?'<div style="color:#4dff6a">🏆 Новий рекорд!</div>':`<div style="opacity:.7">Рекорд: ${bests[k]}</div>`}
- <table><tr><td>Точність</td><td><b>${acc}%</b></td></tr>${cur.track?"":`<tr><td>Влучань / пострілів</td><td><b>${S.hits} / ${S.shots}</b></td></tr><tr><td>Сер. час на ціль</td><td><b>${rt?rt+" мс":"—"}</b></td></tr>`}${S.miss?`<tr><td>Пропущено цілей</td><td><b>${S.miss}</b></td></tr>`:""}</table>`;
+ let h=`<h2 style="margin:0 0 6px">${cur.n}</h2><div style="font-size:34px;font-weight:700">${sc}</div>${nb?'<div style="color:#4dff6a">🏆 Новий рекорд!</div>':`<div style="opacity:.7">${S.nt?"Сесія без таймера":"Рекорд: "+bests[k]}</div>`}
+ <table><tr><td>Точність</td><td><b>${acc}%</b></td></tr>${cur.map?`<tr><td>Вбито / в голову</td><td><b>${S.kills} / ${S.hsn}</b></td></tr>`:""}${cur.track?"":`<tr><td>Влучань / пострілів</td><td><b>${S.hits} / ${S.shots}</b></td></tr><tr><td>Сер. час на ціль</td><td><b>${rt?rt+" мс":"—"}</b></td></tr>`}${S.miss?`<tr><td>Пропущено цілей</td><td><b>${S.miss}</b></td></tr>`:""}</table>`;
  let b="";
  if(routine){ri++;if(ri<routine.length)b=`<button class="pri" id="nx">Далі: ${M[routine[ri]].n} →</button>`;
   else{h=`<h2 style="margin:0 0 6px">Розминку завершено ✅</h2><table><tr><th>Вправа</th><th>Рахунок</th><th>Точн.</th></tr>${res.map(r=>`<tr><td>${r.n}</td><td>${r.sc}</td><td>${r.acc}%</td></tr>`).join("")}</table><div style="opacity:.8">Рука розігріта — запускай CS2 🔫</div>`;routine=null}}
@@ -218,10 +263,67 @@ function finish(){S.phase="end";try{document.exitPointerLock()}catch(e){}const e
  $("#ovp").innerHTML=h+`<div class="row">${b}<button id="mn">До меню</button></div>`;$("#ov").style.display="flex";
  draw();
  const n=$("#nx"),r=$("#rt");if(n)n.onclick=()=>start(routine[ri]);if(r)r.onclick=()=>start(curId);$("#mn").onclick=()=>{routine=null;view(false)}}
-addEventListener("keydown",e=>{if(e.key!=="Escape")return;if(S.phase==="cd"||S.phase==="play")pause();else if(S.phase==="end"){routine=null;view(false)}});
+addEventListener("keydown",e=>{if(e.key==="Enter"&&S.nt&&S.phase==="play"){finish();return}if(e.key!=="Escape")return;if(S.phase==="cd"||S.phase==="play")pause();else if(S.phase==="end"){routine=null;view(false)}});
 addEventListener("resize",()=>{if(S.phase!=="menu"){fit();sync()}});addEventListener("fullscreenchange",()=>{if(S.phase!=="menu"){fit();sync()}});
 $("#wu").onclick=()=>{routine=WU;ri=0;res=[];start(routine[0])};
 $("#dur").onchange=e=>{dur=+e.target.value;cards()};
+const TYPE={gridshot:'f',sixshot:'f',spidershot:'f',spider180:'f',pasu:'f',csflick:'f',pistol:'f',longmicro:'f',microshot:'p',headline:'p',small:'p',reflex:'r',peek:'r',strafe:'t',smooth:'t',reactive:'t',vertical:'t',dist:'t',sweep:'t'};
+let tab='f';
+const WUS=[WU,['gridshot','pasu','spidershot','microshot','strafe','reactive','headline','peek']];
+const wcards=()=>`<div class="card" data-w="0"><h3>Розминка CS2 (5 вправ)</h3><p>Gridshot → Spidershot → Microshot → Strafetrack → Headline</p></div><div class="card" data-w="1"><h3>Розширена (8 вправ)</h3><p>Gridshot → Pasu → Spidershot → Microshot → Strafetrack → Reactive → Headline → Peek</p></div>`;
+function exc(id){cfg.ex=cfg.ex||{};return cfg.ex[id]=Object.assign({sz:1,rnd:0,mn:.6,mx:1.6,t:30,nt:0,sp:1},cfg.ex[id])}
+function openSetup(id){const m=M[id],e=exc(id),el=$("#setup");el.style.display="block";
+ el.innerHTML=`<b>${m.n}</b> — ${m.d}<div class="bar" style="margin:10px 0 0"><label>Розмір ×<span id="o_sz">${e.sz}</span> <input type="range" data-k="sz" min="0.3" max="3" step="0.05" value="${e.sz}"></label><label><input type="checkbox" data-k="rnd" ${e.rnd?"checked":""}> Випадковий розмір: від <input type="number" data-k="mn" min="0.2" max="4" step="0.1" value="${e.mn}"> до <input type="number" data-k="mx" min="0.2" max="4" step="0.1" value="${e.mx}"></label>
+<label>Час <select data-k="nt"><option value="0" ${e.nt?"":"selected"}>На час</option><option value="1" ${e.nt?"selected":""}>Без таймера</option></select></label><label>сек <input type="number" data-k="t" min="5" max="600" step="5" value="${e.t}"></label>${m.track?`<label>Швидкість × <input type="number" data-k="sp" min="0.3" max="3" step="0.1" value="${e.sp}"></label>`:""}</div><div class="bar" style="margin:10px 0 0"><button class="pri" id="go">▶ Старт</button><button id="cl">Закрити</button><span>Без таймера: Enter або «Завершити» в паузі (Esc). Рекорди — лише для режиму на час.</span></div>`;
+ el.querySelectorAll("[data-k]").forEach(i=>i.oninput=()=>{e[i.dataset.k]=i.type==="checkbox"?+i.checked:+i.value;$("#o_sz").textContent=e.sz;saveCfg();cards()});
+ $("#go").onclick=()=>{routine=null;start(id)};$("#cl").onclick=()=>{el.style.display="none"}}
+const rfx=(life,lo,hi,pl,rad)=>({init(){S.nx=now()+500},hit(){S.nx=now()+R(lo,hi)},upd(){const t=now();if(!S.T.length&&t>S.nx)add({...pl(),r:U()*rad,life:life()});S.T=S.T.filter(o=>{if(o.life&&t-o.b>o.life){S.miss++;S.nx=t+R(lo,hi);return false}return true})}});
+const bnc=o=>{if(o.x<o.r||o.x>W-o.r){o.vx=-o.vx;o.x=Math.max(o.r,Math.min(W-o.r,o.x))}if(o.y<o.r||o.y>H-o.r){o.vy=-o.vy;o.y=Math.max(o.r,Math.min(H-o.r,o.y))}};
+Object.assign(M,{
+ pasu:{n:'Pasu / Bounce',k:'Флік · кути',d:'Мішень перестрибує між кутами екрана — довгі фліки.',init(){S.pc=0;this.a()},hit(){this.a()},a(){const C=[[.12,.15],[.88,.85],[.88,.15],[.12,.85]],c=C[S.pc++%4];add({x:c[0]*W,y:c[1]*H,r:U()*.05})}},
+ csflick:Object.assign({n:'Counter-strafe flick',k:'Флік · ціль збоку',d:'Ціль на мить з’являється збоку, як ворог, що виглянув з-за кута (0,55 с).'},rfx(()=>550,350,900,()=>({x:W/2+(Math.random()<.5?-1:1)*W*R(.22,.4),y:H/2+R(-.12,.12)*H}),.045)),
+ pistol:Object.assign({n:'Pistol tap',k:'Флік · один хедшот',d:'Мала ціль на рівні голови, на полівку є 1,2 с: успій поцілити одним пострілом.'},rfx(()=>1200,300,700,()=>({x:R(.15,.85)*W,y:H*.4+R(-.03,.03)*H}),.028)),
+ longmicro:{n:'Long-range micro',k:'Флік · дрібні на краях',d:'Дрібні мішені у крайніх зонах екрана — дальні дистанції.',init(){this.a()},hit(){this.a()},a(){add({x:(Math.random()<.5?R(.05,.2):R(.8,.95))*W,y:R(.2,.8)*H,r:U()*.022})}},
+ small:{n:'Small targets',k:'Точність · дрібні мішені',d:'Дві дрібні мішені по всьому полю. Розмір задаєш у налаштуваннях вправи.',init(){this.a();this.a()},hit(){this.a()},a(){const r=U()*.03,p=place(.1,.9,.15,.85,r,S.T);add({...p,r})}},
+ peek:Object.assign({n:'Peek',k:'Реакція · виглядання',d:'Ціль виглядає на рівні голови всего 0,3–0,6 с і зникає.'},rfx(()=>R(300,600),500,1100,()=>({x:R(.15,.85)*W,y:H*.42+R(-.04,.04)*H}),.04)),
+ reactive:{n:'Reactive tracking',k:'Трекінг · різкі зміни',track:1,d:'Ціль різко міняє швидкість і напрям у будь-якому боці. Тримай ЛКМ.',init(){add({x:W/2,y:H/2,r:U()*.06,vx:0,vy:0});S.tc=0},upd(dt){const o=S.T[0];S.tc-=dt;if(S.tc<0){const a=R(0,6.28),s=R(.1,.7)*W;o.vx=Math.cos(a)*s;o.vy=Math.sin(a)*s*.6;S.tc=R(.15,.7)}o.x+=o.vx*dt;o.y+=o.vy*dt;bnc(o)}},
+ vertical:{n:'Vertical tracking',k:'Трекінг · вертикаль',track:1,d:'Ціль рухається вгору і вниз (підстрибування, сходи). Тримай ЛКМ.',init(){add({x:W/2,y:H/2,r:U()*.06,vx:0,vy:.3*H});S.tc=0},upd(dt){const o=S.T[0];S.tc-=dt;if(S.tc<0){o.vy=(Math.random()<.5?-1:1)*R(.15,.5)*H;S.tc=R(.3,1.2)}o.y+=o.vy*dt;bnc(o)}},
+ dist:{n:'Distance change',k:'Трекінг · дистанція',track:1,d:'Ціль рухається й наближається/віддаляється: розмір постійно міняється. Тримай ЛКМ.',init(){add({x:W/2,y:H/2,r:U()*.06,vx:.25*W,vy:.12*H});S.T[0].r0=S.T[0].r;S.tc=0},upd(dt){const o=S.T[0];S.tc+=dt;o.r=o.r0*(.55+.45*(1+Math.sin(S.tc*1.2)));o.x+=o.vx*dt;o.y+=o.vy*dt;bnc(o)}},
+ sweep:{n:'Pre-aim sweep',k:'Трекінг · лінія голови',track:1,d:'Повільне ведення вздовж лінії голови з зупинками. Тримай ЛКМ.',init(){add({x:W*.2,y:H*.4,r:U()*.04,vx:.18*W});S.tc=1.5},upd(dt){const o=S.T[0];S.tc-=dt;if(S.tc<0){if(o.mv){o.mv=0;S.tc=R(.4,.8)}else{o.mv=1;o.vx=(o.x>W/2?-1:1)*.18*W;S.tc=R(1,2)}}if(o.mv===undefined)o.mv=1;if(o.mv){o.x+=o.vx*dt;if(o.x<o.r||o.x>W-o.r){o.vx=-o.vx;o.x=Math.max(o.r,Math.min(W-o.r,o.x))}}}}
+});
+const XD={len:5,th:1,gap:-1,dot:0,ol:1,t:0,r:50,g:250,b:50,a:255,rh:1080,style:4,om:1,fr:0,oR:0,oG:0,oB:0,oA:255,dsl:181,sd:3,isa:1,osa:.35,ssr:0,sdc:0,sds:1};
+const DICT='ABCDEFGHJKLMNOPQRSTUVWXYZabcdefhijkmnopqrstuvwxyz23456789';
+function scDec(code){const m=code.trim().match(/^CS([A-Za-z2-9]{44})$/);if(!m)return null;let b=0n;for(const ch of [...m[1]].reverse()){const i=DICT.indexOf(ch);if(i<0)return null;b=b*57n+BigInt(i)}
+ const by=[];for(let i=0;i<32;i++){by.unshift(Number(b&255n));b>>=8n}
+ if(b!==0n||by.slice(1).reduce((s,v)=>s+v,0)%256!==by[0]||by[1]!==1)return 'bad';
+ const u=by[18]+by[19]*256+by[20]*65536+by[21]*16777216,bf=(s,w)=>Math.floor(u/2**s)%2**w;
+ return{rh:by[2]|by[3]<<8,style:by[4]&15,fr:by[4]>>4&1,dot:by[4]>>6&1,t:by[4]>>7&1,r:by[5],g:by[6],b:by[7],a:by[8],oR:by[9],oG:by[10],oB:by[11],oA:by[12],th:by[13],om:by[14],ol:by[14]>0?1:0,gap:by[15]<128?by[15]:by[15]-256,len:by[16],dsl:by[17],sd:bf(0,7),isa:bf(7,7)/100,osa:bf(14,7)/100+.3,ssr:bf(21,7)/100,sdc:bf(28,1),sds:(by[22]+10)/100}}
+function scEnc(h){const by=new Array(32).fill(0),c=(v,lo,hi)=>Math.max(lo,Math.min(hi,Math.round(v)));
+ by[1]=1;const rh=c(h.rh,240,65535);by[2]=rh&255;by[3]=rh>>8;
+ by[4]=(h.style&15)|(h.fr?16:0)|(h.dot?64:0)|(h.t?128:0);
+ by[5]=c(h.r,0,255);by[6]=c(h.g,0,255);by[7]=c(h.b,0,255);by[8]=c(h.a,0,255);
+ by[9]=c(h.oR,0,255);by[10]=c(h.oG,0,255);by[11]=c(h.oB,0,255);by[12]=c(h.oA,0,255);
+ by[13]=c(h.th,0,255);by[14]=h.ol?(h.om||1):0;by[15]=c(h.gap,-128,127)&255;by[16]=c(h.len,0,255);by[17]=c(h.dsl,0,255);
+ const u=c(h.sd,0,127)+c(h.isa*100,0,100)*2**7+c((h.osa-.3)*100,0,70)*2**14+c(h.ssr*100,0,100)*2**21+(h.sdc?1:0)*2**28;
+ by[18]=u%256;by[19]=Math.floor(u/256)%256;by[20]=Math.floor(u/65536)%256;by[21]=Math.floor(u/16777216)%256;
+ by[22]=c(h.sds*100-10,0,255);by[0]=by.slice(1).reduce((s,v)=>s+v,0)%256;
+ let b=0n;by.forEach(v=>{b=b*256n+BigInt(v)});let s='';for(let i=0;i<44;i++){s+=DICT[Number(b%57n)];b/=57n}return 'CS'+s}
+const xmsg=t=>{$("#xm").textContent=t};
+function drawCH(c,x,y,k){const h=cfg.xh,L=h.len*k,T=Math.max(1,h.th*k),I=h.gap*k+T/2,O=h.ol?Math.max(1,k):0,Q=[[x+I,y-T/2,L,T],[x-I-L,y-T/2,L,T],[x-T/2,y+I,T,L]];if(!h.t)Q.push([x-T/2,y-I-L,T,L]);if(h.dot)Q.push([x-T/2,y-T/2,T,T]);
+ if(O){c.fillStyle=`rgba(${h.oR},${h.oG},${h.oB},${h.oA/255})`;Q.forEach(q=>c.fillRect(q[0]-O,q[1]-O,q[2]+2*O,q[3]+2*O))}c.fillStyle=`rgba(${h.r},${h.g},${h.b},${h.a/255})`;Q.forEach(q=>c.fillRect(q[0],q[1],q[2],q[3]))}
+function xr(){const c=$("#xp").getContext("2d");c.clearRect(0,0,110,110);drawCH(c,55,55,2);saveCfg()}
+function xui(){const h=cfg.xh;$("#xc").innerHTML=[['len','Довжина',0,255,1],['th','Товщина',0,255,1],['gap','Зазір',-128,127,1],['rh','Висота екрана, px',240,4320,1]].map(([k,n,a,b,s])=>`<label>${n} <input type="number" data-x="${k}" min="${a}" max="${b}" step="${s}" value="${h[k]}" style="width:80px"></label>`).join("")+
+ `<label><input type="checkbox" data-x="dot" ${h.dot?"checked":""}> Крапка</label><label><input type="checkbox" data-x="ol" ${h.ol?"checked":""}> Обводка</label><label><input type="checkbox" data-x="t" ${h.t?"checked":""}> T-стиль</label><label>Колір <input type="color" id="xcol" value="#${[h.r,h.g,h.b].map(v=>(+v).toString(16).padStart(2,"0")).join("")}"></label><label>Прозорість <input type="range" data-x="a" min="0" max="255" value="${h.a}"></label>`;
+ $("#xc").querySelectorAll("[data-x]").forEach(i=>i.oninput=()=>{h[i.dataset.x]=i.type==="checkbox"?+i.checked:+i.value;xr()});
+ $("#xcol").oninput=e=>{const v=e.target.value;h.r=parseInt(v.slice(1,3),16);h.g=parseInt(v.slice(3,5),16);h.b=parseInt(v.slice(5,7),16);xr()};xr()}
+function xexp(){const h=cfg.xh;return[['cl_crosshairstyle',h.style],['cl_crosshaircolor',5],['cl_crosshaircolor_r',h.r],['cl_crosshaircolor_g',h.g],['cl_crosshaircolor_b',h.b],['cl_crosshaircolor_a',h.a],['cl_crosshair_length',h.len],['cl_crosshair_thickness',h.th],['cl_crosshair_gap',h.gap],['cl_crosshairdot',h.dot],['cl_crosshair_t',h.t],['cl_crosshair_drawoutline',h.ol],['cl_crosshairoutline_r',0],['cl_crosshairoutline_g',0],['cl_crosshairoutline_b',0],['cl_crosshairoutline_a',255],['cl_crosshair_screen_height',h.rh]].map(([k,v])=>k+' "'+v+'"').join("\n")}
+function ximp(s){const h=cfg.xh,m={cl_crosshaircolor_r:'r',cl_crosshaircolor_g:'g',cl_crosshaircolor_b:'b',cl_crosshaircolor_a:'a',cl_crosshair_length:'len',cl_crosshair_thickness:'th',cl_crosshair_gap:'gap',cl_crosshairdot:'dot',cl_crosshair_t:'t',cl_crosshair_drawoutline:'ol',cl_crosshair_screen_height:'rh'};let n=0;
+ s.split(/\n|;/).forEach(l=>{const q=l.trim().match(/^(\S+)\s+"?(-?[\d.]+)"?/);if(q&&m[q[1]]){h[m[q[1]]]=+q[2];n++}});xui();return n}
+cfg.xh=Object.assign({},XD,cfg.xh);xui();
+$("#xr").onclick=()=>{cfg.xh=Object.assign({},XD);xui()};
+const _x1=()=>{const v=$("#xt").value.trim(),d=scDec(v);if(d==='bad'){xmsg('Код пошкоджений: не збігається контрольна сума або версія');return}if(d){Object.assign(cfg.xh,d);xui();xmsg('Код CS2 застосовано');return}if(/^CSGO/i.test(v)){xmsg('Формат CSGO-… застарівся, CS2 його не приймає. Встав код виду CS… (44 символи)');return}const n=ximp(v);xmsg(n?'Застосовано параметрів: '+n:'Не розпізнав ні код CS2, ні рядки cl_crosshair…')};
+const _x2=()=>{$("#xt").value=scEnc(cfg.xh);xmsg('Скопіюй код та встав у CS2: Налаштування → Гра → Приціл → Імпорт')};
+$("#tabs").onclick=e=>{const b=e.target.closest("button");if(b){tab=b.dataset.t;$("#setup").style.display="none";cards()}};
 $("#ex").onclick=()=>{routine=null;view(false)};
 $("#dpi").value=cfg.dpi;$("#sens").value=cfg.sens;$("#res").innerHTML=Object.entries(RES).map(([k,a])=>`<optgroup label="${k}">${a.map(r=>`<option value="${r}">${r.replace("x"," × ")}</option>`).join("")}</optgroup>`).join("");
 if(cfg.sel!=="custom"&&![].concat(...Object.values(RES)).includes(cfg.sel)){const q=cfg.sel.split("x");cfg.sel="custom";cfg.cw=+q[0];cfg.ch=+q[1]}
